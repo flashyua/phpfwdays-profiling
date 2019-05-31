@@ -3,6 +3,7 @@
 namespace app\services;
 
 use app\models\Article;
+use app\models\ArticleTags;
 use app\models\Tag;
 use joshtronic\LoremIpsum;
 
@@ -54,7 +55,17 @@ class ArticlesGenerator
             'text' => $this->generateRandomText(),
         ]);
         $article->save();
-        $this->generateTagsForArticle($article);
+        $tags = $this->generateTagsForArticle($article);
+        $rows = array_map(function (Tag $tag) use ($article) : array {
+            return ['article_id' => $article->id, 'tag_id' => $tag->id];
+        }, $tags);
+
+        ArticleTags::getDb()
+           ->createCommand()
+           ->batchInsert(ArticleTags::tableName(), [
+                'article_id', 'tag_id'
+            ], $rows)
+           ->execute();
 
         return $article;
     }
@@ -84,33 +95,43 @@ class ArticlesGenerator
         return $this->ensureTag($tags[$i]);
     }
 
+    private $_tags = [];
     /**
      * @param string $name
      * @return Tag
      */
     private function ensureTag(string $name): Tag
     {
+        if (isset($this->_tags[$name])) {
+            return $this->_tags[$name];
+        }
+
         if ($tag = Tag::find()->where(['name' => $name])->one()) {
+            $this->_tags[$name] = $tag;
             return $tag;
         }
 
         $tag = new Tag(['name' => $name]);
         $tag->save();
+        $this->_tags[$name] = $tag;
 
         return $tag;
     }
 
     /**
      * @param Article $article
-     * @void
+     * @return Tag[]
      */
-    private function generateTagsForArticle($article): void
+    private function generateTagsForArticle($article): array
     {
         $count = mt_rand(1, 5);
 
+        $tags = [];
         for ($i = 0; $i < $count; $i++) {
-            $article->link('tags', $this->getRandomTag());
+            $tags[] = $this->getRandomTag();
         }
+
+        return $tags;
     }
 
     /**
